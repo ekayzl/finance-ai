@@ -128,7 +128,7 @@ export default function App() {
         setMessages(prev => [...prev, { role: 'assistant', content: `Erro: ${data.details || data.error}` }])
       } else {
         let content = data.reply
-        ifif (data.saved && data.savedType === 'expense') {
+        if (data.saved && data.savedType === 'expense') {
           const cat = data.savedData?.category === 'Múltiplos' ? 'vários' : data.savedData?.category
           content = `✅ ${data.savedData?.category === 'Múltiplos' ? data.savedData?.description + ' registrados' : 'Gasto registrado: **' + data.savedData?.description + '**'} — ${fmt(data.savedData?.amount || 0)}${cat !== 'vários' ? ' (' + cat + ')' : ''}`
         } else if (data.saved && data.savedType === 'income') {
