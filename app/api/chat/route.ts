@@ -43,7 +43,7 @@ Alertas de orçamento: ${summary.budgetAlerts.map(a => `${a.category} ${a.pct}% 
 Últimas transações: ${summary.recentTransactions.slice(0, 5).map(t => `${t.description} R$${t.amount} (${t.category})`).join(', ') || 'nenhuma'}
     `.trim()
 
-    const systemPrompt = `Você é um assistente financeiro pessoal simpático e direto para a conta "${acc}".
+const systemPrompt = `Você é um assistente financeiro pessoal simpático e direto para a conta "${acc}".
 
 SITUAÇÃO FINANCEIRA ATUAL:
 ${resumo}
@@ -51,16 +51,21 @@ ${resumo}
 CATEGORIAS: ${CATEGORIES.join(', ')}
 
 INSTRUÇÕES:
-1. GASTO: Se o usuário mencionar um gasto, responda SOMENTE com JSON:
+1. GASTO: Se o usuário mencionar UM gasto, responda SOMENTE com JSON:
    {"action":"expense","amount":50,"category":"Alimentação","description":"Almoço","date":"${new Date().toISOString().slice(0, 10)}"}
 
-2. RECEITA/GANHO: Se mencionar que recebeu, ganhou ou entrou dinheiro, responda SOMENTE com JSON:
+2. MÚLTIPLOS GASTOS: Se mencionar mais de um gasto na mesma mensagem, responda SOMENTE com JSON array:
+   [{"action":"expense","amount":50,"category":"Alimentação","description":"Almoço","date":"${new Date().toISOString().slice(0, 10)}"},{"action":"expense","amount":35,"category":"Transporte","description":"Uber","date":"${new Date().toISOString().slice(0, 10)}"}]
+
+3. RECEITA/GANHO: Se mencionar que recebeu ou ganhou dinheiro, responda SOMENTE com JSON:
    {"action":"income","amount":500,"description":"Freela design","date":"${new Date().toISOString().slice(0, 10)}"}
 
-3. ANÁLISE/PERGUNTA: Responda em texto normal, português casual, seja direto e útil.
+4. REMOÇÃO/DELETAR: NUNCA tente remover gastos via JSON. Se pedirem pra remover, diga: "Para remover um gasto, vai na aba Histórico e clica no X ao lado da transação."
 
-4. Nunca misture JSON com texto. É um ou outro.
-5. Hoje é ${new Date().toISOString().slice(0, 10)}.`
+5. ANÁLISE/PERGUNTA: Responda em texto normal, português casual.
+
+6. Nunca misture JSON com texto. É um ou outro.
+7. Hoje é ${new Date().toISOString().slice(0, 10)}.`
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -74,11 +79,16 @@ INSTRUÇÕES:
     let savedData = null
     let savedType = ''
 
-    try {
-      const jsonMatch = reply.match(/\{[\s\S]*?"action"[\s\S]*?\}/)
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
+try {
+      // Try array first (multiple expenses)
+      const arrayMatch = reply.match(/\[[\s\S]*?\]/)
+      const singleMatch = reply.match(/\{[\s\S]*?"action"[\s\S]*?\}/)
+      
+      const items = arrayMatch 
+        ? JSON.parse(arrayMatch[0]) 
+        : singleMatch ? [JSON.parse(singleMatch[0])] : []
 
+      for (const parsed of items) {
         if (parsed.action === 'expense') {
           await addTransaction({
             date: parsed.date || new Date().toISOString().slice(0, 10),
@@ -102,6 +112,10 @@ INSTRUÇÕES:
           savedType = 'income'
           savedData = parsed
         }
+      }
+
+      if (saved && items.length > 1) {
+        savedData = { amount: items.reduce((s: number, i: {amount: number}) => s + i.amount, 0), description: `${items.length} gastos`, category: 'Múltiplos' }
       }
     } catch { /* not JSON */ }
 
